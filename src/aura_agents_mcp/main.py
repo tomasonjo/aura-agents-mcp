@@ -254,5 +254,9 @@ async def invoke_agent(
     )
 
 
-if __name__ == "__main__":
+def main():
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
