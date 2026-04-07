@@ -1,0 +1,21 @@
+[project]
+name = "aura-agents-mcp"
+version = "0.1.0"
+description = "MCP server for the Neo4j Aura Agents API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+aura-agents-mcp = "aura_agents_mcp.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aura_agents_mcp"]
