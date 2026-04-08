@@ -319,6 +319,143 @@ async def invoke_agent(
     )
 
 
+# -- fleet-manager deployments --------------------------------------------
+
+
+@mcp.tool()
+async def list_deployments(
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns a list of Fleet Manager deployments."""
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET", f"/organizations/{o}/projects/{p}/fleet-manager/deployments"
+    )
+
+
+@mcp.tool()
+async def create_deployment(
+    name: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Create a new Fleet Manager deployment.
+
+    Args:
+        name: Deployment display name.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    body: dict[str, Any] = {"name": name}
+    return await _request(
+        "POST", f"/organizations/{o}/projects/{p}/fleet-manager/deployments", json=body
+    )
+
+
+@mcp.tool()
+async def get_deployment(
+    deployment_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns the given Fleet Manager deployment.
+
+    Args:
+        deployment_id: Deployment UUID.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/fleet-manager/deployments/{deployment_id}",
+    )
+
+
+@mcp.tool()
+async def delete_deployment(
+    deployment_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Unregister a Fleet Manager deployment.
+
+    Args:
+        deployment_id: Deployment UUID.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "DELETE",
+        f"/organizations/{o}/projects/{p}/fleet-manager/deployments/{deployment_id}",
+    )
+
+
+@mcp.tool()
+async def list_deployment_databases(
+    deployment_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns databases for the given Fleet Manager deployment.
+
+    Args:
+        deployment_id: Deployment UUID.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/fleet-manager/deployments/{deployment_id}/databases",
+    )
+
+
+@mcp.tool()
+async def list_deployment_servers(
+    deployment_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns servers for the given Fleet Manager deployment.
+
+    Args:
+        deployment_id: Deployment UUID.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/fleet-manager/deployments/{deployment_id}/servers",
+    )
+
+
+@mcp.tool()
+async def list_server_databases(
+    deployment_id: str,
+    server_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns server databases for the given Fleet Manager deployment.
+
+    Args:
+        deployment_id: Deployment UUID.
+        server_id: Server UUID.
+        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
+        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/fleet-manager/deployments/{deployment_id}/servers/{server_id}/databases",
+    )
+
+
 def main():
     mcp.run()
 
