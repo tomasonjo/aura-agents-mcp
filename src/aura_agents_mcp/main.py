@@ -1,14 +1,9 @@
 """
 FastMCP server for Neo4j Aura Agents API (v2beta1).
 
-Agent-friendly: only truly essential parameters are required. Everything else
-has sensible defaults so an LLM can call these tools with minimal context.
-
 Env vars:
   AURA_CLIENT_ID       - Aura API client ID          (required)
   AURA_CLIENT_SECRET   - Aura API client secret      (required)
-  AURA_ORG_ID          - default organization UUID   (optional)
-  AURA_PROJECT_ID      - default project UUID        (optional)
   AURA_BASE_URL        - override base URL           (optional)
 
 Run:
@@ -29,8 +24,6 @@ BASE_URL = os.getenv("AURA_BASE_URL", "https://api.neo4j.io/v2beta1")
 TOKEN_URL = "https://api.neo4j.io/oauth/token"
 CLIENT_ID = os.getenv("AURA_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("AURA_CLIENT_SECRET", "")
-DEFAULT_ORG = os.getenv("AURA_ORG_ID", "")
-DEFAULT_PROJECT = os.getenv("AURA_PROJECT_ID", "")
 
 mcp = FastMCP("aura-agents")
 
@@ -83,17 +76,6 @@ async def _request(method: str, path: str, *, json: Optional[dict] = None) -> An
     return data
 
 
-def _scope(org: Optional[str], project: Optional[str]) -> tuple[str, str]:
-    o = org or DEFAULT_ORG
-    p = project or DEFAULT_PROJECT
-    if not o or not p:
-        raise ValueError(
-            "organization_id and project_id are required (or set "
-            "AURA_ORG_ID / AURA_PROJECT_ID env vars)."
-        )
-    return o, p
-
-
 # --- tools --------------------------------------------------------------
 
 # -- organizations / projects / instances --------------------------------
@@ -107,55 +89,44 @@ async def list_organizations() -> Any:
 
 @mcp.tool()
 async def get_organization(
-    organization_id: Optional[str] = None,
+    organization_id: str,
 ) -> Any:
     """Get an organization by its ID.
 
     Args:
-        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+        organization_id: Organization UUID.
     """
-    o = organization_id or DEFAULT_ORG
-    if not o:
-        raise ValueError(
-            "organization_id is required (or set AURA_ORG_ID env var)."
-        )
-    return await _request("GET", f"/organizations/{o}")
+    return await _request("GET", f"/organizations/{organization_id}")
 
 
 @mcp.tool()
 async def list_projects(
-    organization_id: Optional[str] = None,
+    organization_id: str,
 ) -> Any:
     """List all projects in an organization.
 
     Args:
-        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+        organization_id: Organization UUID.
     """
-    o = organization_id or DEFAULT_ORG
-    if not o:
-        raise ValueError(
-            "organization_id is required (or set AURA_ORG_ID env var)."
-        )
-    return await _request("GET", f"/organizations/{o}/projects")
+    return await _request("GET", f"/organizations/{organization_id}/projects")
 
 
 @mcp.tool()
 async def list_instance_ip_filters(
     instance_id: str,
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
     """Returns a list of IP filters for an instance.
 
     Args:
         instance_id: The Aura instance ID.
-        organization_id: Organization UUID (defaults to AURA_ORG_ID).
-        project_id: Project UUID (defaults to AURA_PROJECT_ID).
+        organization_id: Organization UUID.
+        project_id: Project UUID.
     """
-    o, p = _scope(organization_id, project_id)
     return await _request(
         "GET",
-        f"/organizations/{o}/projects/{p}/instances/{instance_id}/ip-filters",
+        f"/organizations/{organization_id}/projects/{project_id}/instances/{instance_id}/ip-filters",
     )
 
 
@@ -164,23 +135,21 @@ async def list_instance_ip_filters(
 
 @mcp.tool()
 async def list_agents(
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
-    """List all agents in a project. Uses env defaults if IDs omitted."""
-    o, p = _scope(organization_id, project_id)
-    return await _request("GET", f"/organizations/{o}/projects/{p}/agents")
+    """List all agents in a project."""
+    return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents")
 
 
 @mcp.tool()
 async def get_agent(
     agent_id: str,
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
     """Fetch a single agent by ID."""
-    o, p = _scope(organization_id, project_id)
-    return await _request("GET", f"/organizations/{o}/projects/{p}/agents/{agent_id}")
+    return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}")
 
 
 @mcp.tool()
@@ -191,8 +160,8 @@ async def create_agent(
     tools: Optional[list[dict]] = None,
     system_prompt: Optional[str] = None,
     is_private: bool = False,
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Create a new agent.
 
@@ -209,10 +178,9 @@ async def create_agent(
             Aura API schema for cypherTemplate / similaritySearch shapes.
         system_prompt: Optional system prompt.
         is_private: Whether the agent is private (default False).
-        organization_id: Aura org UUID (defaults to AURA_ORG_ID).
-        project_id: Aura project UUID (defaults to AURA_PROJECT_ID).
+        organization_id: Aura org UUID.
+        project_id: Aura project UUID.
     """
-    o, p = _scope(organization_id, project_id)
     body: dict[str, Any] = {
         "name": name,
         "description": description,
@@ -231,7 +199,7 @@ async def create_agent(
     if system_prompt is not None:
         body["system_prompt"] = system_prompt
     return await _request(
-        "POST", f"/organizations/{o}/projects/{p}/agents", json=body
+        "POST", f"/organizations/{organization_id}/projects/{project_id}/agents", json=body
     )
 
 
@@ -245,8 +213,8 @@ async def update_agent(
     system_prompt: Optional[str] = None,
     is_private: Optional[bool] = None,
     enabled: Optional[bool] = None,
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Update an existing agent.
 
@@ -254,9 +222,8 @@ async def update_agent(
     agent's current configuration (the API uses PUT, so this tool fetches the
     existing agent first and merges your changes).
     """
-    o, p = _scope(organization_id, project_id)
     current = await _request(
-        "GET", f"/organizations/{o}/projects/{p}/agents/{agent_id}"
+        "GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
     )
     if isinstance(current, dict) and current.get("error"):
         return current
@@ -280,20 +247,19 @@ async def update_agent(
         body["enabled"] = enabled
 
     return await _request(
-        "PUT", f"/organizations/{o}/projects/{p}/agents/{agent_id}", json=body
+        "PUT", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}", json=body
     )
 
 
 @mcp.tool()
 async def delete_agent(
     agent_id: str,
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
     """Delete an agent by ID."""
-    o, p = _scope(organization_id, project_id)
     return await _request(
-        "DELETE", f"/organizations/{o}/projects/{p}/agents/{agent_id}"
+        "DELETE", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
     )
 
 
@@ -301,8 +267,8 @@ async def delete_agent(
 async def invoke_agent(
     agent_id: str,
     input: Union[str, list[dict]],
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
     """Invoke an agent with a prompt.
 
@@ -310,11 +276,12 @@ async def invoke_agent(
         agent_id: Agent UUID.
         input: Either a plain string (single user message) or a list of
             `{"role": "user", "content": "..."}` dicts.
+        organization_id: Organization UUID.
+        project_id: Project UUID.
     """
-    o, p = _scope(organization_id, project_id)
     return await _request(
         "POST",
-        f"/organizations/{o}/projects/{p}/agents/{agent_id}/invoke",
+        f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
         json={"input": input},
     )
 
@@ -324,18 +291,36 @@ async def invoke_agent(
 
 @mcp.tool()
 async def list_instances(
-    organization_id: Optional[str] = None,
-    project_id: Optional[str] = None,
+    organization_id: str,
+    project_id: str,
 ) -> Any:
     """Returns a list of instances in a project.
 
     Args:
-        organization_id: Organization UUID (defaults to AURA_ORG_ID).
-        project_id: Project UUID (defaults to AURA_PROJECT_ID).
+        organization_id: Organization UUID.
+        project_id: Project UUID.
     """
-    o, p = _scope(organization_id, project_id)
     return await _request(
-        "GET", f"/organizations/{o}/projects/{p}/instances"
+        "GET", f"/organizations/{organization_id}/projects/{project_id}/instances"
+    )
+
+
+@mcp.tool()
+async def list_databases(
+    instance_id: str,
+    organization_id: str,
+    project_id: str,
+) -> Any:
+    """Returns a list of databases for an instance.
+
+    Args:
+        instance_id: The Aura instance ID.
+        organization_id: Organization UUID.
+        project_id: Project UUID.
+    """
+    return await _request(
+        "GET",
+        f"/organizations/{organization_id}/projects/{project_id}/instances/{instance_id}/databases",
     )
 
 
