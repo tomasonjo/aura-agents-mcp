@@ -299,11 +299,9 @@ async def invoke_agent(
     agents = await _request(
         "GET", f"/organizations/{organization_id}/projects/{project_id}/agents"
     )
-    agent_id = None
-    for agent in agents if isinstance(agents, list) else agents.get("data", []):
-        if agent.get("name") == agent_name:
-            agent_id = agent["id"]
-            break
+    agent_id = next(
+        (a["id"] for a in agents if a.get("name") == agent_name), None
+    )
     if not agent_id:
         return {"error": f"No agent found with name '{agent_name}'"}
     return await _request(
