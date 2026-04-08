@@ -96,6 +96,71 @@ def _scope(org: Optional[str], project: Optional[str]) -> tuple[str, str]:
 
 # --- tools --------------------------------------------------------------
 
+# -- organizations / projects / instances --------------------------------
+
+
+@mcp.tool()
+async def list_organizations() -> Any:
+    """Get a list of all organizations the caller has access to."""
+    return await _request("GET", "/organizations")
+
+
+@mcp.tool()
+async def get_organization(
+    organization_id: Optional[str] = None,
+) -> Any:
+    """Get an organization by its ID.
+
+    Args:
+        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+    """
+    o = organization_id or DEFAULT_ORG
+    if not o:
+        raise ValueError(
+            "organization_id is required (or set AURA_ORG_ID env var)."
+        )
+    return await _request("GET", f"/organizations/{o}")
+
+
+@mcp.tool()
+async def list_projects(
+    organization_id: Optional[str] = None,
+) -> Any:
+    """List all projects in an organization.
+
+    Args:
+        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+    """
+    o = organization_id or DEFAULT_ORG
+    if not o:
+        raise ValueError(
+            "organization_id is required (or set AURA_ORG_ID env var)."
+        )
+    return await _request("GET", f"/organizations/{o}/projects")
+
+
+@mcp.tool()
+async def list_instance_ip_filters(
+    instance_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns a list of IP filters for an instance.
+
+    Args:
+        instance_id: The Aura instance ID.
+        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+        project_id: Project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/instances/{instance_id}/ip-filters",
+    )
+
+
+# -- agents --------------------------------------------------------------
+
 
 @mcp.tool()
 async def list_agents(
