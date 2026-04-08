@@ -282,7 +282,7 @@ async def delete_agent(
 
 @mcp.tool()
 async def invoke_agent(
-    agent_id: str,
+    agent_name: str,
     input: Union[str, list[dict]],
     organization_id: str,
     project_id: str,
@@ -290,7 +290,7 @@ async def invoke_agent(
     """Invoke an agent with a prompt.
 
     Args:
-        agent_id: Agent UUID.
+        agent_name: The name of the agent to invoke.
         input: Either a plain string (single user message) or a list of
             `{"role": "user", "content": "..."}` dicts.
         organization_id: Organization UUID.
@@ -298,7 +298,7 @@ async def invoke_agent(
     """
     return await _request(
         "POST",
-        f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
+        f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_name}/invoke",
         json={"input": input},
         extra_headers={"Organization-Id": organization_id},
     )
