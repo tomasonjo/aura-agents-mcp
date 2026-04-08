@@ -13,6 +13,7 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from typing import Any, Optional, Union
@@ -284,6 +285,79 @@ async def invoke_agent(
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
         json={"input": input},
     )
+
+
+# -- schema ----------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_schema(
+    dbid: str,
+    organization_id: str,
+    project_id: str,
+) -> Any:
+    """Get the schema of a Neo4j database.
+
+    Creates a temporary text2cypher agent, asks it for the database schema,
+    then deletes the agent in the background.
+
+    Args:
+        dbid: Target Aura database instance ID.
+        organization_id: Organization UUID.
+        project_id: Project UUID.
+    """
+    base = f"/organizations/{organization_id}/projects/{project_id}/agents"
+
+    # 1. Create a temporary text2cypher agent
+    agent = await _request(
+        "POST",
+        base,
+        json={
+            "name": "_schema_probe",
+            "description": "Temporary agent for schema retrieval",
+            "dbid": dbid,
+            "is_private": True,
+            "tools": [
+                {
+                    "type": "text2cypher",
+                    "name": "query",
+                    "description": "Query the database.",
+                    "enabled": True,
+                }
+            ],
+        },
+    )
+    if isinstance(agent, dict) and agent.get("error"):
+        return agent
+
+    agent_id = agent.get("id")
+    if not agent_id:
+        return {"error": True, "message": "Failed to get agent ID from creation response."}
+
+    # 2. Invoke the agent to fetch the schema
+    try:
+        schema = await _request(
+            "POST",
+            f"{base}/{agent_id}/invoke",
+            json={"input": "Return the complete database schema including all node labels, relationship types, and their properties."},
+        )
+    except Exception as e:
+        # Still try to clean up the agent
+        asyncio.create_task(_delete_agent_background(base, agent_id))
+        return {"error": True, "message": str(e)}
+
+    # 3. Fire-and-forget deletion of the temporary agent
+    asyncio.create_task(_delete_agent_background(base, agent_id))
+
+    return schema
+
+
+async def _delete_agent_background(base: str, agent_id: str) -> None:
+    """Delete an agent, suppressing any errors."""
+    try:
+        await _request("DELETE", f"{base}/{agent_id}")
+    except Exception:
+        pass
 
 
 # -- instances -------------------------------------------------------------
