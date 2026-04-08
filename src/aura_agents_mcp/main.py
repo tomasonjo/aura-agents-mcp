@@ -339,6 +339,26 @@ async def list_instances(
     )
 
 
+@mcp.tool()
+async def list_databases(
+    instance_id: str,
+    organization_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Any:
+    """Returns a list of databases for an instance.
+
+    Args:
+        instance_id: The Aura instance ID.
+        organization_id: Organization UUID (defaults to AURA_ORG_ID).
+        project_id: Project UUID (defaults to AURA_PROJECT_ID).
+    """
+    o, p = _scope(organization_id, project_id)
+    return await _request(
+        "GET",
+        f"/organizations/{o}/projects/{p}/instances/{instance_id}/databases",
+    )
+
+
 def main():
     mcp.run()
 
