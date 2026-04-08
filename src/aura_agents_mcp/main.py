@@ -52,13 +52,21 @@ async def _get_token() -> str:
     return _token_cache["access_token"]
 
 
-async def _request(method: str, path: str, *, json: Optional[dict] = None) -> Any:
+async def _request(
+    method: str,
+    path: str,
+    *,
+    json: Optional[dict] = None,
+    extra_headers: Optional[dict[str, str]] = None,
+) -> Any:
     token = await _get_token()
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    if extra_headers:
+        headers.update(extra_headers)
     async with httpx.AsyncClient(timeout=60.0) as c:
         r = await c.request(method, f"{BASE_URL}{path}", headers=headers, json=json)
     if r.status_code == 204 or not r.content:
@@ -200,7 +208,10 @@ async def create_agent(
     if system_prompt is not None:
         body["system_prompt"] = system_prompt
     return await _request(
-        "POST", f"/organizations/{organization_id}/projects/{project_id}/agents", json=body
+        "POST",
+        f"/organizations/{organization_id}/projects/{project_id}/agents",
+        json=body,
+        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -248,7 +259,10 @@ async def update_agent(
         body["enabled"] = enabled
 
     return await _request(
-        "PUT", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}", json=body
+        "PUT",
+        f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}",
+        json=body,
+        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -260,7 +274,9 @@ async def delete_agent(
 ) -> Any:
     """Delete an agent by ID."""
     return await _request(
-        "DELETE", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
+        "DELETE",
+        f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}",
+        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -284,6 +300,7 @@ async def invoke_agent(
         "POST",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
         json={"input": input},
+        extra_headers={"Organization-Id": organization_id},
     )
 
 
