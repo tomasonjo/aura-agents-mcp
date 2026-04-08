@@ -343,6 +343,7 @@ async def get_schema(
                 }
             ],
         },
+        extra_headers={"Organization-Id": organization_id},
     )
     if isinstance(agent, dict) and agent.get("error"):
         return agent
@@ -357,22 +358,23 @@ async def get_schema(
             "POST",
             f"{base}/{agent_id}/invoke",
             json={"input": "Return the complete database schema including all node labels, relationship types, and their properties."},
+            extra_headers={"Organization-Id": organization_id},
         )
     except Exception as e:
         # Still try to clean up the agent
-        asyncio.create_task(_delete_agent_background(base, agent_id))
+        asyncio.create_task(_delete_agent_background(base, agent_id, organization_id))
         return {"error": True, "message": str(e)}
 
     # 3. Fire-and-forget deletion of the temporary agent
-    asyncio.create_task(_delete_agent_background(base, agent_id))
+    asyncio.create_task(_delete_agent_background(base, agent_id, organization_id))
 
     return schema
 
 
-async def _delete_agent_background(base: str, agent_id: str) -> None:
+async def _delete_agent_background(base: str, agent_id: str, organization_id: str) -> None:
     """Delete an agent, suppressing any errors."""
     try:
-        await _request("DELETE", f"{base}/{agent_id}")
+        await _request("DELETE", f"{base}/{agent_id}", extra_headers={"Organization-Id": organization_id})
     except Exception:
         pass
 
