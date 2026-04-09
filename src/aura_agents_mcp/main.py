@@ -183,8 +183,34 @@ async def create_agent(
         dbid: Target Aura database instance ID.
         description: Optional agent description.
         tools: Optional list of tool definitions. Defaults to one text2cypher
-            tool. Each tool is a dict with at least `type` and `name`; see the
-            Aura API schema for cypherTemplate / similaritySearch shapes.
+            tool. Each tool dict must have `type`, `name`, `description`, and
+            `enabled`. Supported tool types:
+
+            - text2cypher: Converts natural language to Cypher queries.
+              No extra config needed.
+              Example: {"type": "text2cypher", "name": "query",
+                        "description": "Query the database", "enabled": true}
+
+            - cypherTemplate: Runs a predefined Cypher template with parameters.
+              Requires a `config` object with `template` (Cypher string using
+              $param placeholders) and `parameters` (list of parameter defs
+              with `name`, `data_type`, and `description`).
+              Example: {"type": "cypherTemplate", "name": "find-movies",
+                        "description": "Find movies by title", "enabled": true,
+                        "config": {"template": "MATCH (m:Movie) WHERE m.title
+                        CONTAINS $title RETURN m", "parameters": [{"name":
+                        "title", "data_type": "string", "description": "Movie
+                        title to search for"}]}}
+
+            - similaritySearch: Performs vector similarity search.
+              Requires a `config` object with `provider`, `model`, `index`,
+              and `top_k`.
+              Example: {"type": "similaritySearch", "name": "search",
+                        "description": "Vector search", "enabled": true,
+                        "config": {"provider": "openai", "model":
+                        "text-embedding-ada-002", "index": "my-vector-index",
+                        "top_k": 10}}
+
         system_prompt: Optional system prompt.
         is_private: Whether the agent is private (default False).
         organization_id: Aura org UUID.
@@ -233,6 +259,20 @@ async def update_agent(
     Only `agent_id` is required. Any field you omit is carried over from the
     agent's current configuration (the API uses PUT, so this tool fetches the
     existing agent first and merges your changes).
+
+    Args:
+        agent_id: The agent UUID to update.
+        name: Agent display name.
+        description: Agent description.
+        dbid: Target Aura database instance ID.
+        tools: List of tool definitions. Replaces all existing tools.
+            Supported types: text2cypher, cypherTemplate, similaritySearch.
+            See create_agent for tool schema details and examples.
+        system_prompt: System prompt.
+        is_private: Whether the agent is private.
+        enabled: Whether the agent is enabled.
+        organization_id: Aura org UUID.
+        project_id: Aura project UUID.
     """
     current = await _request(
         "GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
@@ -325,7 +365,7 @@ async def get_schema(
     """
     base = f"/organizations/{organization_id}/projects/{project_id}/agents"
 
-    # 1. Create a temporary cypher_template agent
+    # 1. Create a temporary cypherTemplate agent
     agent = await _request(
         "POST",
         base,
@@ -336,11 +376,14 @@ async def get_schema(
             "is_private": False,
             "tools": [
                 {
-                    "type": "cypher_template",
+                    "type": "cypherTemplate",
                     "name": "get_schema",
                     "description": "Fetch the database schema.",
-                    "cypher_template": "CALL apoc.meta.schema() YIELD value RETURN value",
                     "enabled": True,
+                    "config": {
+                        "template": "CALL apoc.meta.schema() YIELD value RETURN value",
+                        "parameters": [],
+                    },
                 }
             ],
         },
