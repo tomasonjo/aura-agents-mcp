@@ -85,58 +85,102 @@ async def _request(
     return data
 
 
+# --- internal helpers ----------------------------------------------------
+
+
+async def _resolve_org_project_for_db(dbid: str) -> tuple[str, str]:
+    """Find the organization_id and project_id that own *dbid*.
+
+    Iterates orgs → projects → instances → databases until the dbid is found.
+    Raises RuntimeError if the database cannot be located.
+    """
+    orgs_resp = await _request("GET", "/organizations")
+    orgs = orgs_resp.get("data", orgs_resp) if isinstance(orgs_resp, dict) else orgs_resp
+    if not isinstance(orgs, list):
+        orgs = [orgs]
+    for org in orgs:
+        org_id = org.get("id", "")
+        projects_resp = await _request("GET", f"/organizations/{org_id}/projects")
+        projects = projects_resp.get("data", projects_resp) if isinstance(projects_resp, dict) else projects_resp
+        if not isinstance(projects, list):
+            projects = [projects]
+        for proj in projects:
+            proj_id = proj.get("id", "")
+            instances_resp = await _request(
+                "GET", f"/organizations/{org_id}/projects/{proj_id}/instances"
+            )
+            instances = instances_resp.get("data", instances_resp) if isinstance(instances_resp, dict) else instances_resp
+            if not isinstance(instances, list):
+                instances = [instances]
+            for inst in instances:
+                inst_id = inst.get("id", "")
+                dbs_resp = await _request(
+                    "GET",
+                    f"/organizations/{org_id}/projects/{proj_id}/instances/{inst_id}/databases",
+                )
+                dbs = dbs_resp.get("data", dbs_resp) if isinstance(dbs_resp, dict) else dbs_resp
+                if not isinstance(dbs, list):
+                    dbs = [dbs]
+                for db in dbs:
+                    if db.get("id") == dbid:
+                        return org_id, proj_id
+    raise RuntimeError(f"Database '{dbid}' not found in any organization/project/instance.")
+
+
 # --- tools --------------------------------------------------------------
 
-# -- organizations / projects / instances --------------------------------
+# -- databases ------------------------------------------------------------
 
 
 @mcp.tool()
-async def list_organizations() -> Any:
-    """Get a list of all organizations the caller has access to."""
-    return await _request("GET", "/organizations")
+async def list_databases() -> Any:
+    """List all databases across every organization, project, and instance.
 
-
-@mcp.tool()
-async def get_organization(
-    organization_id: str,
-) -> Any:
-    """Get an organization by its ID.
-
-    Args:
-        organization_id: Organization UUID.
+    Returns a flat list of databases, each enriched with its parent
+    organization, project, and instance details so that no separate
+    lookup is needed.
     """
-    return await _request("GET", f"/organizations/{organization_id}")
+    result: list[dict[str, Any]] = []
+    orgs_resp = await _request("GET", "/organizations")
+    orgs = orgs_resp.get("data", orgs_resp) if isinstance(orgs_resp, dict) else orgs_resp
+    if not isinstance(orgs, list):
+        orgs = [orgs]
 
+    for org in orgs:
+        org_id = org.get("id", "")
+        projects_resp = await _request("GET", f"/organizations/{org_id}/projects")
+        projects = projects_resp.get("data", projects_resp) if isinstance(projects_resp, dict) else projects_resp
+        if not isinstance(projects, list):
+            projects = [projects]
 
-@mcp.tool()
-async def list_projects(
-    organization_id: str,
-) -> Any:
-    """List all projects in an organization.
+        for proj in projects:
+            proj_id = proj.get("id", "")
+            instances_resp = await _request(
+                "GET", f"/organizations/{org_id}/projects/{proj_id}/instances"
+            )
+            instances = instances_resp.get("data", instances_resp) if isinstance(instances_resp, dict) else instances_resp
+            if not isinstance(instances, list):
+                instances = [instances]
 
-    Args:
-        organization_id: Organization UUID.
-    """
-    return await _request("GET", f"/organizations/{organization_id}/projects")
+            for inst in instances:
+                inst_id = inst.get("id", "")
+                dbs_resp = await _request(
+                    "GET",
+                    f"/organizations/{org_id}/projects/{proj_id}/instances/{inst_id}/databases",
+                )
+                dbs = dbs_resp.get("data", dbs_resp) if isinstance(dbs_resp, dict) else dbs_resp
+                if not isinstance(dbs, list):
+                    dbs = [dbs]
 
+                for db in dbs:
+                    result.append({
+                        "database": db,
+                        "instance": inst,
+                        "project": proj,
+                        "organization": org,
+                    })
 
-@mcp.tool()
-async def list_instance_ip_filters(
-    instance_id: str,
-    organization_id: str,
-    project_id: str,
-) -> Any:
-    """Returns a list of IP filters for an instance.
-
-    Args:
-        instance_id: The Aura instance ID.
-        organization_id: Organization UUID.
-        project_id: Project UUID.
-    """
-    return await _request(
-        "GET",
-        f"/organizations/{organization_id}/projects/{project_id}/instances/{instance_id}/ip-filters",
-    )
+    return result
 
 
 # -- agents --------------------------------------------------------------
@@ -144,20 +188,29 @@ async def list_instance_ip_filters(
 
 @mcp.tool()
 async def list_agents(
-    organization_id: str,
-    project_id: str,
+    dbid: str,
 ) -> Any:
-    """List all agents in a project."""
+    """List all agents for a database.
+
+    Args:
+        dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
+    """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents")
 
 
 @mcp.tool()
 async def get_agent(
     agent_id: str,
-    organization_id: str,
-    project_id: str,
+    dbid: str,
 ) -> Any:
-    """Fetch a single agent by ID."""
+    """Fetch a single agent by ID.
+
+    Args:
+        agent_id: The agent UUID.
+        dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
+    """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}")
 
 
@@ -169,8 +222,6 @@ async def create_agent(
     tools: Optional[list[dict]] = None,
     system_prompt: Optional[str] = None,
     is_private: bool = False,
-    organization_id: str = "",
-    project_id: str = "",
 ) -> Any:
     """Create a new agent.
 
@@ -180,7 +231,7 @@ async def create_agent(
 
     Args:
         name: Agent display name.
-        dbid: Target Aura database instance ID.
+        dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
         description: Optional agent description.
         tools: Optional list of tool definitions. Defaults to one text2cypher
             tool. Each tool dict must have `type`, `name`, `description`, and
@@ -213,9 +264,8 @@ async def create_agent(
 
         system_prompt: Optional system prompt.
         is_private: Whether the agent is private (default False).
-        organization_id: Aura org UUID.
-        project_id: Aura project UUID.
     """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     body: dict[str, Any] = {
         "name": name,
         "description": description,
@@ -244,36 +294,35 @@ async def create_agent(
 @mcp.tool()
 async def update_agent(
     agent_id: str,
+    dbid: str,
     name: Optional[str] = None,
     description: Optional[str] = None,
-    dbid: Optional[str] = None,
+    new_dbid: Optional[str] = None,
     tools: Optional[list[dict]] = None,
     system_prompt: Optional[str] = None,
     is_private: Optional[bool] = None,
     enabled: Optional[bool] = None,
-    organization_id: str = "",
-    project_id: str = "",
 ) -> Any:
     """Update an existing agent.
 
-    Only `agent_id` is required. Any field you omit is carried over from the
-    agent's current configuration (the API uses PUT, so this tool fetches the
-    existing agent first and merges your changes).
+    Only `agent_id` and `dbid` are required. Any other field you omit is
+    carried over from the agent's current configuration (the API uses PUT,
+    so this tool fetches the existing agent first and merges your changes).
 
     Args:
         agent_id: The agent UUID to update.
+        dbid: Current Aura database instance ID of the agent. Use list_databases to find available database IDs.
         name: Agent display name.
         description: Agent description.
-        dbid: Target Aura database instance ID.
+        new_dbid: New target Aura database instance ID (to move the agent to a different database).
         tools: List of tool definitions. Replaces all existing tools.
             Supported types: text2cypher, cypherTemplate, similaritySearch.
             See create_agent for tool schema details and examples.
         system_prompt: System prompt.
         is_private: Whether the agent is private.
         enabled: Whether the agent is enabled.
-        organization_id: Aura org UUID.
-        project_id: Aura project UUID.
     """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     current = await _request(
         "GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
     )
@@ -285,7 +334,7 @@ async def update_agent(
         "description": description
         if description is not None
         else current.get("description", ""),
-        "dbid": dbid if dbid is not None else current.get("dbid", ""),
+        "dbid": new_dbid if new_dbid is not None else current.get("dbid", ""),
         "is_private": is_private
         if is_private is not None
         else current.get("is_private", False),
@@ -309,10 +358,15 @@ async def update_agent(
 @mcp.tool()
 async def delete_agent(
     agent_id: str,
-    organization_id: str,
-    project_id: str,
+    dbid: str,
 ) -> Any:
-    """Delete an agent by ID."""
+    """Delete an agent by ID.
+
+    Args:
+        agent_id: The agent UUID to delete.
+        dbid: Aura database instance ID. Use list_databases to find available database IDs.
+    """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     return await _request(
         "DELETE",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}",
@@ -324,8 +378,7 @@ async def delete_agent(
 async def invoke_agent(
     agent_id: str,
     input: Union[str, list[dict]],
-    organization_id: str,
-    project_id: str,
+    dbid: str,
 ) -> Any:
     """Invoke an agent with a prompt.
 
@@ -333,9 +386,9 @@ async def invoke_agent(
         agent_id: The ID of the agent to invoke.
         input: Either a plain string (single user message) or a list of
             `{"role": "user", "content": "..."}` dicts.
-        organization_id: Organization UUID.
-        project_id: Project UUID.
+        dbid: Aura database instance ID. Use list_databases to find available database IDs.
     """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     return await _request(
         "POST",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
@@ -350,8 +403,6 @@ async def invoke_agent(
 @mcp.tool()
 async def get_schema(
     dbid: str,
-    organization_id: str,
-    project_id: str,
 ) -> Any:
     """Get the schema of a Neo4j database.
 
@@ -359,10 +410,9 @@ async def get_schema(
     then deletes the agent in the background.
 
     Args:
-        dbid: Target Aura database instance ID.
-        organization_id: Organization UUID.
-        project_id: Project UUID.
+        dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
     """
+    organization_id, project_id = await _resolve_org_project_for_db(dbid)
     base = f"/organizations/{organization_id}/projects/{project_id}/agents"
 
     # 1. Create a temporary cypherTemplate agent
@@ -421,44 +471,6 @@ async def _delete_agent_background(base: str, agent_id: str, organization_id: st
         await _request("DELETE", f"{base}/{agent_id}", extra_headers={"Organization-Id": organization_id})
     except Exception:
         pass
-
-
-# -- instances -------------------------------------------------------------
-
-
-@mcp.tool()
-async def list_instances(
-    organization_id: str,
-    project_id: str,
-) -> Any:
-    """Returns a list of instances in a project.
-
-    Args:
-        organization_id: Organization UUID.
-        project_id: Project UUID.
-    """
-    return await _request(
-        "GET", f"/organizations/{organization_id}/projects/{project_id}/instances"
-    )
-
-
-@mcp.tool()
-async def list_databases(
-    instance_id: str,
-    organization_id: str,
-    project_id: str,
-) -> Any:
-    """Returns a list of databases for an instance.
-
-    Args:
-        instance_id: The Aura instance ID.
-        organization_id: Organization UUID.
-        project_id: Project UUID.
-    """
-    return await _request(
-        "GET",
-        f"/organizations/{organization_id}/projects/{project_id}/instances/{instance_id}/databases",
-    )
 
 
 def main():
