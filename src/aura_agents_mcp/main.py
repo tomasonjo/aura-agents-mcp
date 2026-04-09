@@ -315,7 +315,7 @@ async def get_schema(
 ) -> Any:
     """Get the schema of a Neo4j database.
 
-    Creates a temporary text2cypher agent, asks it for the database schema,
+    Creates a temporary cypher_template agent, invokes it to fetch the schema,
     then deletes the agent in the background.
 
     Args:
@@ -325,7 +325,7 @@ async def get_schema(
     """
     base = f"/organizations/{organization_id}/projects/{project_id}/agents"
 
-    # 1. Create a temporary text2cypher agent
+    # 1. Create a temporary cypher_template agent
     agent = await _request(
         "POST",
         base,
@@ -333,12 +333,13 @@ async def get_schema(
             "name": "_schema_probe",
             "description": "Temporary agent for schema retrieval",
             "dbid": dbid,
-            "is_private": True,
+            "is_private": False,
             "tools": [
                 {
-                    "type": "text2cypher",
-                    "name": "query",
-                    "description": "Query the database.",
+                    "type": "cypher_template",
+                    "name": "get_schema",
+                    "description": "Fetch the database schema.",
+                    "cypher_template": "CALL apoc.meta.schema() YIELD value RETURN value",
                     "enabled": True,
                 }
             ],
@@ -357,7 +358,7 @@ async def get_schema(
         schema = await _request(
             "POST",
             f"{base}/{agent_id}/invoke",
-            json={"input": "Return the complete database schema including all node labels, relationship types, and their properties."},
+            json={"input": "Fetch the database schema."},
             extra_headers={"Organization-Id": organization_id},
         )
     except Exception as e:
