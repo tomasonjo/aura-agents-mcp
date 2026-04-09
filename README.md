@@ -29,8 +29,6 @@ Set the following environment variables:
 |---|---|---|
 | `AURA_CLIENT_ID` | Yes | Aura API client ID |
 | `AURA_CLIENT_SECRET` | Yes | Aura API client secret |
-| `AURA_ORG_ID` | No | Default organization UUID |
-| `AURA_PROJECT_ID` | No | Default project UUID |
 | `AURA_BASE_URL` | No | Override API base URL |
 
 ## Usage
@@ -52,9 +50,7 @@ Add to your `claude_desktop_config.json`:
       "command": "aura-agents-mcp",
       "env": {
         "AURA_CLIENT_ID": "your-client-id",
-        "AURA_CLIENT_SECRET": "your-client-secret",
-        "AURA_ORG_ID": "your-org-id",
-        "AURA_PROJECT_ID": "your-project-id"
+        "AURA_CLIENT_SECRET": "your-client-secret"
       }
     }
   }
@@ -71,9 +67,11 @@ claude mcp add aura-agents -- aura-agents-mcp
 
 | Tool | Description |
 |---|---|
+| `list_databases` | List all databases across every organization, project, and instance |
 | `list_agents` | List all agents in a project |
 | `get_agent` | Fetch a single agent by ID |
 | `create_agent` | Create a new agent (defaults to a text2cypher tool) |
 | `update_agent` | Update an existing agent (merge semantics) |
 | `delete_agent` | Delete an agent |
 | `invoke_agent` | Invoke an agent with a prompt |
+| `get_schema` | Get the schema of a Neo4j database |
