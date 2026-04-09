@@ -57,7 +57,6 @@ async def _request(
     path: str,
     *,
     json: Optional[dict] = None,
-    extra_headers: Optional[dict[str, str]] = None,
 ) -> Any:
     token = await _get_token()
     headers = {
@@ -65,8 +64,6 @@ async def _request(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
-    if extra_headers:
-        headers.update(extra_headers)
     async with httpx.AsyncClient(timeout=60.0) as c:
         r = await c.request(method, f"{BASE_URL}{path}", headers=headers, json=json)
     if r.status_code == 204 or not r.content:
@@ -88,12 +85,19 @@ async def _request(
 # --- internal helpers ----------------------------------------------------
 
 
-async def _resolve_org_project_for_db(dbid: str) -> tuple[str, str]:
-    """Find the organization_id and project_id that own *dbid*.
+async def _resolve_org_project(
+    dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
+) -> tuple[str, str]:
+    """Return (organization_id, project_id) for *dbid*.
 
-    Iterates orgs → projects → instances → databases until the dbid is found.
-    Raises RuntimeError if the database cannot be located.
+    If both IDs are already supplied they are returned as-is (no API calls).
+    Otherwise iterates orgs → projects → instances → databases to locate them.
+    Raises RuntimeError if the database cannot be found.
     """
+    if organization_id and project_id:
+        return organization_id, project_id
     orgs_resp = await _request("GET", "/organizations")
     orgs = orgs_resp.get("data", orgs_resp) if isinstance(orgs_resp, dict) else orgs_resp
     if not isinstance(orgs, list):
@@ -189,13 +193,17 @@ async def list_databases() -> Any:
 @mcp.tool()
 async def list_agents(
     dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """List all agents for a database.
 
     Args:
         dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents")
 
 
@@ -203,14 +211,18 @@ async def list_agents(
 async def get_agent(
     agent_id: str,
     dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Fetch a single agent by ID.
 
     Args:
         agent_id: The agent UUID.
         dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}")
 
 
@@ -222,6 +234,8 @@ async def create_agent(
     tools: Optional[list[dict]] = None,
     system_prompt: Optional[str] = None,
     is_private: bool = False,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Create a new agent.
 
@@ -264,8 +278,10 @@ async def create_agent(
 
         system_prompt: Optional system prompt.
         is_private: Whether the agent is private (default False).
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     body: dict[str, Any] = {
         "name": name,
         "description": description,
@@ -287,7 +303,6 @@ async def create_agent(
         "POST",
         f"/organizations/{organization_id}/projects/{project_id}/agents",
         json=body,
-        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -302,6 +317,8 @@ async def update_agent(
     system_prompt: Optional[str] = None,
     is_private: Optional[bool] = None,
     enabled: Optional[bool] = None,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Update an existing agent.
 
@@ -321,8 +338,10 @@ async def update_agent(
         system_prompt: System prompt.
         is_private: Whether the agent is private.
         enabled: Whether the agent is enabled.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     current = await _request(
         "GET", f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}"
     )
@@ -351,7 +370,6 @@ async def update_agent(
         "PUT",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}",
         json=body,
-        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -359,18 +377,21 @@ async def update_agent(
 async def delete_agent(
     agent_id: str,
     dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Delete an agent by ID.
 
     Args:
         agent_id: The agent UUID to delete.
         dbid: Aura database instance ID. Use list_databases to find available database IDs.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     return await _request(
         "DELETE",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}",
-        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -379,6 +400,8 @@ async def invoke_agent(
     agent_id: str,
     input: Union[str, list[dict]],
     dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Invoke an agent with a prompt.
 
@@ -387,13 +410,14 @@ async def invoke_agent(
         input: Either a plain string (single user message) or a list of
             `{"role": "user", "content": "..."}` dicts.
         dbid: Aura database instance ID. Use list_databases to find available database IDs.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     return await _request(
         "POST",
         f"/organizations/{organization_id}/projects/{project_id}/agents/{agent_id}/invoke",
         json={"input": input},
-        extra_headers={"Organization-Id": organization_id},
     )
 
 
@@ -403,6 +427,8 @@ async def invoke_agent(
 @mcp.tool()
 async def get_schema(
     dbid: str,
+    organization_id: str = "",
+    project_id: str = "",
 ) -> Any:
     """Get the schema of a Neo4j database.
 
@@ -411,8 +437,10 @@ async def get_schema(
 
     Args:
         dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
+        organization_id: Optional organization UUID (skips auto-resolution if provided with project_id).
+        project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
-    organization_id, project_id = await _resolve_org_project_for_db(dbid)
+    organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     base = f"/organizations/{organization_id}/projects/{project_id}/agents"
 
     # 1. Create a temporary cypherTemplate agent
@@ -437,7 +465,6 @@ async def get_schema(
                 }
             ],
         },
-        extra_headers={"Organization-Id": organization_id},
     )
     if isinstance(agent, dict) and agent.get("error"):
         return agent
@@ -452,23 +479,22 @@ async def get_schema(
             "POST",
             f"{base}/{agent_id}/invoke",
             json={"input": "Fetch the database schema."},
-            extra_headers={"Organization-Id": organization_id},
         )
     except Exception as e:
         # Still try to clean up the agent
-        asyncio.create_task(_delete_agent_background(base, agent_id, organization_id))
+        asyncio.create_task(_delete_agent_background(base, agent_id))
         return {"error": True, "message": str(e)}
 
     # 3. Fire-and-forget deletion of the temporary agent
-    asyncio.create_task(_delete_agent_background(base, agent_id, organization_id))
+    asyncio.create_task(_delete_agent_background(base, agent_id))
 
     return schema
 
 
-async def _delete_agent_background(base: str, agent_id: str, organization_id: str) -> None:
+async def _delete_agent_background(base: str, agent_id: str) -> None:
     """Delete an agent, suppressing any errors."""
     try:
-        await _request("DELETE", f"{base}/{agent_id}", extra_headers={"Organization-Id": organization_id})
+        await _request("DELETE", f"{base}/{agent_id}")
     except Exception:
         pass
 
