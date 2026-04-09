@@ -8,7 +8,7 @@ Env vars:
 
 Run:
   pip install fastmcp httpx
-  python aura_agents_mcp.py
+  python agentic_creation_mcp.py
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# aura-agents-mcp
+# agentic-creation-mcp
 
 MCP server for the [Neo4j Aura Agents API](https://neo4j.com/docs/aura/platform/api/specification/#tag/Agents) (v2beta1).
 
@@ -38,7 +38,7 @@ Set the following environment variables:
 ### Standalone
 
 ```bash
-aura-agents-mcp
+agentic-creation-mcp
 ```
 
 ### Claude Desktop
@@ -49,7 +49,7 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "aura-agents": {
-      "command": "aura-agents-mcp",
+      "command": "agentic-creation-mcp",
       "env": {
         "AURA_CLIENT_ID": "your-client-id",
         "AURA_CLIENT_SECRET": "your-client-secret",
@@ -64,7 +64,7 @@ Add to your `claude_desktop_config.json`:
 ### Claude Code
 
 ```bash
-claude mcp add aura-agents -- aura-agents-mcp
+claude mcp add aura-agents -- agentic-creation-mcp
 ```
 
 ## Tools
