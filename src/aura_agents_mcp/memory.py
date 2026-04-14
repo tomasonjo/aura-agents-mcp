@@ -232,11 +232,11 @@ _LIST_SORT_FIELDS = {"path", "updated_at", "created_at", "size"}
 
 
 async def list_memories(
-    prefix: str = "",
-    limit: int = 10,
-    offset: int = 0,
-    sort_by: str = "path",
-    order: str = "asc",
+    prefix: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    sort_by: str | None = None,
+    order: str | None = None,
 ) -> Any:
     """List memory pages, with pagination, sorting, and metadata. Use to
     browse what you already remember in a category (e.g. `entities/` to see
@@ -244,41 +244,45 @@ async def list_memories(
     to find recently-updated pages with `sort_by="updated_at"`,
     `order="desc"`.
 
-    Each entry includes `path`, `size` (bytes of content), `created_at`,
-    and `updated_at` (ISO-8601).
+    All arguments are optional. Each entry includes `path`, `size` (bytes
+    of content), `created_at`, and `updated_at` (ISO-8601).
 
     Args:
-        prefix: Optional path prefix to filter by. Empty string lists all.
+        prefix: Optional path prefix to filter by. Defaults to "" (all).
         limit: Maximum number of results to return. Defaults to 10.
-        offset: Number of results to skip (for paging through large lists).
+        offset: Number of results to skip. Defaults to 0.
         sort_by: One of "path", "updated_at", "created_at", "size".
-        order: "asc" or "desc".
+            Defaults to "path".
+        order: "asc" or "desc". Defaults to "asc".
     """
-    if sort_by not in _LIST_SORT_FIELDS:
+    # Validate only what the caller actually supplied; defaults are
+    # applied below (and again by Cypher's coalesce as a safety net).
+    if sort_by is not None and sort_by not in _LIST_SORT_FIELDS:
         return {
             "error": True,
             "message": f"sort_by must be one of {sorted(_LIST_SORT_FIELDS)}",
         }
-    order_norm = order.lower()
+    order_norm = order.lower() if order is not None else "asc"
     if order_norm not in ("asc", "desc"):
         return {"error": True, "message": "order must be 'asc' or 'desc'"}
-    if limit < 1:
+    if limit is not None and limit < 1:
         return {"error": True, "message": "limit must be >= 1"}
-    if offset < 0:
+    if offset is not None and offset < 0:
         return {"error": True, "message": "offset must be >= 0"}
 
+    sort_field = sort_by or "path"
     # Sort field is whitelisted above, so direct interpolation is safe and
     # avoids the Cypher "cannot parameterise ORDER BY" limitation.
     direction = "DESC" if order_norm == "desc" else "ASC"
     cypher = (
         "MATCH (p:Page {wiki: $wiki}) "
         "WHERE coalesce(p.deleted, false) = false "
-        "  AND p.path STARTS WITH $prefix "
+        "  AND p.path STARTS WITH coalesce($prefix, '') "
         "WITH count(p) AS total, collect(p) AS pages "
         "UNWIND pages AS p "
         "WITH total, p "
-        f"ORDER BY p.{sort_by} {direction}, p.path ASC "
-        "SKIP $offset LIMIT $limit "
+        f"ORDER BY p.{sort_field} {direction}, p.path ASC "
+        "SKIP coalesce($offset, 0) LIMIT coalesce($limit, 10) "
         "RETURN total, p.path AS path, p.size AS size, "
         "       p.created_at AS created_at, "
         "       p.updated_at AS updated_at"
@@ -308,7 +312,7 @@ async def list_memories(
             tot_result = await s.run(
                 "MATCH (p:Page {wiki: $wiki}) "
                 "WHERE coalesce(p.deleted, false) = false "
-                "  AND p.path STARTS WITH $prefix "
+                "  AND p.path STARTS WITH coalesce($prefix, '') "
                 "RETURN count(p) AS total",
                 {"wiki": WIKI, "prefix": prefix},
             )
@@ -316,11 +320,11 @@ async def list_memories(
             total = rec["total"] if rec else 0
 
     return {
-        "prefix": prefix,
+        "prefix": prefix or "",
         "total": total,
-        "offset": offset,
-        "limit": limit,
-        "sort_by": sort_by,
+        "offset": offset if offset is not None else 0,
+        "limit": limit if limit is not None else 10,
+        "sort_by": sort_field,
         "order": order_norm,
         "items": items,
     }
