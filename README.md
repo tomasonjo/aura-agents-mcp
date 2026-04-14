@@ -67,6 +67,32 @@ Add to your `claude_desktop_config.json`:
 claude mcp add aura-agents -- aura-agents-mcp
 ```
 
+### Run directly from GitHub with `uvx`
+
+If you'd rather not install the package, you can run it straight from the repo with [`uv`](https://docs.astral.sh/uv/):
+
+```json
+{
+  "mcpServers": {
+    "aura_agents": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/tomasonjo/aura-agents-mcp",
+        "aura-agents-mcp"
+      ],
+      "env": {
+        "AURA_CLIENT_ID": "",
+        "AURA_CLIENT_SECRET": "",
+        "NEO4J_MEMORY_URI": "bolt://localhost:7687",
+        "NEO4J_MEMORY_USERNAME": "neo4j",
+        "NEO4J_MEMORY_PASSWORD": "password"
+      }
+    }
+  }
+}
+```
+
 ## Tools
 
 | Tool | Description |
