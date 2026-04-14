@@ -500,6 +500,10 @@ async def _delete_agent_background(base: str, agent_id: str) -> None:
 
 
 def main():
+    from . import memory
+
+    if memory.memory_enabled():
+        memory.register(mcp)
     mcp.run()
 
 
