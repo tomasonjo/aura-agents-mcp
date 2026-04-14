@@ -86,11 +86,11 @@ Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEM
 
 | Tool | Description |
 |---|---|
-| `read_file` | Read a markdown page from the memory wiki |
-| `write_file` | Create or overwrite a page; syncs `LINKS_TO` edges from `[[wikilinks]]` |
-| `append_file` | Append to an existing page; adds new wikilink edges |
-| `list_files` | List page paths under a prefix |
-| `search` | Full-text search across pages |
-| `find_backlinks` | Pages that link to a given page |
-| `rename_file` | Rename a page and rewrite `[[old]]` references |
-| `delete_file` | Soft delete a page |
+| `read_memory` | Read a stored memory page |
+| `write_memory` | Save or overwrite a memory; syncs `LINKS_TO` edges from `[[wikilinks]]` |
+| `append_memory` | Append to an existing memory; adds new wikilink edges |
+| `list_memories` | List memory paths under a prefix |
+| `search_memory` | Full-text search across memories |
+| `find_memory_backlinks` | Memories that link to a given memory |
+| `rename_memory` | Rename a memory and rewrite `[[old]]` references |
+| `delete_memory` | Soft delete a memory |
