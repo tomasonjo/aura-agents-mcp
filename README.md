@@ -110,7 +110,22 @@ If you'd rather not install the package, you can run it straight from the repo w
 
 ### Memory tools
 
-Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEMORY_PASSWORD` are set. They give the agent a persistent markdown-style wiki backed by a separate Neo4j instance — pages are `Page` nodes, `[[wikilinks]]` become `LINKS_TO` edges, and a full-text index covers `path` and `content`. Suggested page conventions: `user/profile.md`, `entities/<name>.md`, `concepts/<name>.md`, `learnings/<topic>.md`, `log.md`.
+Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEMORY_PASSWORD` are set. They give the agent a persistent markdown-style wiki backed by a separate Neo4j instance — pages are `Page` nodes, `[[wikilinks]]` become `LINKS_TO` edges, and a full-text index covers `path` and `content`.
+
+#### Recommended page layout
+
+The wiki is just markdown, so any structure works — but the model gets the most leverage when pages are organised by topic. A good starting convention:
+
+```
+user/profile.md          # who they are, role, responsibilities
+user/preferences.md      # tooling, style, do / don't
+entities/<name>.md       # people, orgs, services, repos
+concepts/<name>.md       # domain ideas the model needs to know
+learnings/<topic>.md     # things that went wrong, fixes that worked
+log.md                   # scratch / chronological notes
+```
+
+Cross-link liberally with `[[wikilinks]]` (e.g. a `learnings/` page mentioning `[[concepts/text2cypher]]`) — every link becomes a graph edge the model can traverse later via `find_memory_backlinks`.
 
 #### A wiki the model writes for itself
 
