@@ -110,6 +110,20 @@ If you'd rather not install the package, you can run it straight from the repo w
 
 Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEMORY_PASSWORD` are set. They give the agent a persistent markdown-style wiki backed by a separate Neo4j instance — pages are `Page` nodes, `[[wikilinks]]` become `LINKS_TO` edges, and a full-text index covers `path` and `content`. Suggested page conventions: `user/profile.md`, `entities/<name>.md`, `concepts/<name>.md`, `learnings/<topic>.md`, `log.md`.
 
+#### A wiki the model writes for itself
+
+The memory layer is inspired by [Andrej Karpathy's idea of an LLM-authored knowledge base](https://x.com/karpathy/status/2039805659525644595) — instead of relying solely on fine-tuning or stuffing everything into the prompt, the model curates its *own* wiki as it works. Every interaction is an opportunity to take notes: who the user is, what conventions a project follows, which approaches failed last time, what an unfamiliar acronym means. Those notes are written back as plain markdown pages and recalled on demand in future sessions.
+
+This turns memory into a **graph of interlinked pages** rather than a flat log:
+
+- **Pages, not transcripts.** Knowledge is organised by topic (`concepts/text2cypher.md`, `entities/acme-corp.md`, `learnings/migration-pitfalls.md`) so the model retrieves the *idea*, not the conversation it came from.
+- **Wikilinks become edges.** Writing `[[concepts/cypher]]` inside a page automatically creates a `LINKS_TO` relationship in Neo4j. The wiki *is* a knowledge graph — you can traverse it, find backlinks, and discover related context the model didn't explicitly ask for.
+- **Full-text + graph recall.** `search_memory` covers fuzzy lookup, `find_memory_backlinks` surfaces everything that references a page, and `list_memories` walks the namespace like a directory tree.
+- **Learn and evolve.** Because the model owns the write path (`write_memory`, `append_memory`, `rename_memory`), it can refactor its own knowledge base over time — promoting a stray observation in `log.md` into a proper `learnings/` page, renaming a concept and having every backlink updated automatically, or correcting a stale fact. The wiki gets sharper with use instead of stale.
+- **Portable across agents.** Because storage is just Neo4j + markdown, the same wiki can be shared between Claude Desktop, Claude Code, and any Aura agent you spin up — they all read and write the same brain.
+
+The `NEO4J_MEMORY_WIKI` namespace lets you host multiple isolated wikis on one backing instance (e.g. one per user, project, or experiment).
+
 | Tool | Description |
 |---|---|
 | `read_memory` | Read a stored memory page |
