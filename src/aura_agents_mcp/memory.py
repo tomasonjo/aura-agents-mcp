@@ -233,7 +233,7 @@ _LIST_SORT_FIELDS = {"path", "updated_at", "created_at", "size"}
 
 async def list_memories(
     prefix: str = "",
-    limit: int = 100,
+    limit: int = 10,
     offset: int = 0,
     sort_by: str = "path",
     order: str = "asc",
@@ -245,13 +245,11 @@ async def list_memories(
     `order="desc"`.
 
     Each entry includes `path`, `size` (bytes of content), `created_at`,
-    and `updated_at` (ISO-8601). Pages written before this metadata existed
-    will report null for the timestamps and 0 for size — rewriting the
-    page once will populate them.
+    and `updated_at` (ISO-8601).
 
     Args:
         prefix: Optional path prefix to filter by. Empty string lists all.
-        limit: Maximum number of results to return. Defaults to 100.
+        limit: Maximum number of results to return. Defaults to 10.
         offset: Number of results to skip (for paging through large lists).
         sort_by: One of "path", "updated_at", "created_at", "size".
         order: "asc" or "desc".
@@ -281,8 +279,7 @@ async def list_memories(
         "WITH total, p "
         f"ORDER BY p.{sort_by} {direction}, p.path ASC "
         "SKIP $offset LIMIT $limit "
-        "RETURN total, p.path AS path, "
-        "       coalesce(p.size, 0) AS size, "
+        "RETURN total, p.path AS path, p.size AS size, "
         "       p.created_at AS created_at, "
         "       p.updated_at AS updated_at"
     )
@@ -444,10 +441,9 @@ async def _rename_tx(tx, old_path: str, new_path: str) -> None:
     await tx.run(
         "MATCH (old:Page {wiki: $wiki, path: $old_path}) "
         "MERGE (new:Page {wiki: $wiki, path: $new_path}) "
-        "ON CREATE SET new.created_at = coalesce(old.created_at, datetime()) "
+        "ON CREATE SET new.created_at = old.created_at "
         "SET new.content = old.content, new.deleted = false, "
-        "    new.size = coalesce(old.size, size(coalesce(old.content, ''))), "
-        "    new.updated_at = datetime() "
+        "    new.size = old.size, new.updated_at = datetime() "
         "WITH old, new "
         "OPTIONAL MATCH (old)-[r:LINKS_TO]->(t) "
         "FOREACH (_ IN CASE WHEN t IS NULL THEN [] ELSE [1] END | "
