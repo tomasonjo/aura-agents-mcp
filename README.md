@@ -114,18 +114,32 @@ Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEM
 
 #### Recommended page layout
 
-The wiki is just markdown, so any structure works — but the model gets the most leverage when pages are organised by topic. A good starting convention:
+The wiki is just markdown, so any structure works — but the model gets the most leverage when pages are organised by topic, and when anything learned about a *specific* database or agent lives on its own page (keyed by id) so it can be recalled individually instead of scanning a mixed log. A good starting convention:
 
 ```
-user/profile.md          # who they are, role, responsibilities
-user/preferences.md      # tooling, style, do / don't
-entities/<name>.md       # people, orgs, services, repos
-concepts/<name>.md       # domain ideas the model needs to know
-learnings/<topic>.md     # things that went wrong, fixes that worked
-log.md                   # scratch / chronological notes
+user/profile.md              # who they are, role, responsibilities
+user/preferences.md          # tooling, style, do / don't
+
+databases/<dbid>.md          # one page per Aura database
+                             #   purpose, schema quirks, known-good
+                             #   Cypher patterns, gotchas, indexes
+databases/<dbid>/<topic>.md  # optional sub-pages for deep dives
+
+agents/<agent_id>.md         # one page per agent
+                             #   what it's for, tool list & rationale,
+                             #   prompt lessons, failure modes, fixes
+agents/<agent_id>/<topic>.md # optional sub-pages
+
+entities/<name>.md           # people, orgs, services, repos
+concepts/<name>.md           # domain ideas the model needs to know
+learnings/<topic>.md         # cross-cutting lessons not tied to one
+                             # database or agent
+log.md                       # scratch / chronological notes
 ```
 
-Cross-link liberally with `[[wikilinks]]` (e.g. a `learnings/` page mentioning `[[concepts/text2cypher]]`) — every link becomes a graph edge the model can traverse later via `find_memory_backlinks`.
+The `databases/` and `agents/` namespaces are recommendations, not rules — add other top-level folders when something doesn't fit. The point is that a future session can call `read_memory("databases/<dbid>.md")` or `read_memory("agents/<agent_id>.md")` and get exactly that context.
+
+Cross-link liberally with `[[wikilinks]]` — every agent page should link to its `[[databases/<dbid>]]`, learnings should link to the `[[concepts/...]]` they relate to, and so on. Every link becomes a graph edge the model can traverse later via `find_memory_backlinks`.
 
 #### A wiki the model writes for itself
 
