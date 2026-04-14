@@ -30,6 +30,10 @@ Set the following environment variables:
 | `AURA_CLIENT_ID` | Yes | Aura API client ID |
 | `AURA_CLIENT_SECRET` | Yes | Aura API client secret |
 | `AURA_BASE_URL` | No | Override API base URL |
+| `NEO4J_MEMORY_URI` | No | Bolt URI for the agent's persistent memory store. When set together with the username and password below, the memory wiki tools are registered. |
+| `NEO4J_MEMORY_USERNAME` | No | Username for the memory store. |
+| `NEO4J_MEMORY_PASSWORD` | No | Password for the memory store. |
+| `NEO4J_MEMORY_WIKI` | No | Namespace for memory pages (default `default`). Lets a single backing instance host multiple wikis. |
 
 ## Usage
 
@@ -75,3 +79,18 @@ claude mcp add aura-agents -- aura-agents-mcp
 | `delete_agent` | Delete an agent |
 | `invoke_agent` | Invoke an agent with a prompt |
 | `get_schema` | Get the schema of a Neo4j database |
+
+### Memory tools
+
+Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEMORY_PASSWORD` are set. They give the agent a persistent markdown-style wiki backed by a separate Neo4j instance — pages are `Page` nodes, `[[wikilinks]]` become `LINKS_TO` edges, and a full-text index covers `path` and `content`. Suggested page conventions: `user/profile.md`, `entities/<name>.md`, `concepts/<name>.md`, `learnings/<topic>.md`, `log.md`.
+
+| Tool | Description |
+|---|---|
+| `read_file` | Read a markdown page from the memory wiki |
+| `write_file` | Create or overwrite a page; syncs `LINKS_TO` edges from `[[wikilinks]]` |
+| `append_file` | Append to an existing page; adds new wikilink edges |
+| `list_files` | List page paths under a prefix |
+| `search` | Full-text search across pages |
+| `find_backlinks` | Pages that link to a given page |
+| `rename_file` | Rename a page and rewrite `[[old]]` references |
+| `delete_file` | Soft delete a page |
