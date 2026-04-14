@@ -116,6 +116,22 @@ async def write_memory(path: str, content: str) -> Any:
     worth recalling in future sessions. Parses `[[wikilinks]]` from content
     and links to those memories, auto-creating empty stubs as needed.
 
+    Recommended page layout — organise memories by topic, not by
+    conversation, so they can be recalled independently of when they
+    were learned:
+
+        user/profile.md          # who they are, role, responsibilities
+        user/preferences.md      # tooling, style, do / don't
+        entities/<name>.md       # people, orgs, services, repos
+        concepts/<name>.md       # domain ideas worth knowing
+        learnings/<topic>.md     # what went wrong and the fix
+        log.md                   # scratch / chronological notes
+
+    Cross-link liberally with `[[wikilinks]]` (e.g. a `learnings/` page
+    referencing `[[concepts/text2cypher]]`) — every link becomes a graph
+    edge you can traverse later via `find_memory_backlinks`. Prefer
+    refining an existing page over creating near-duplicates.
+
     Args:
         path: Memory page path, e.g. "user/profile.md".
         content: Full markdown content of the memory.
