@@ -82,13 +82,14 @@ def memory_enabled() -> bool:
 # --- tool implementations ------------------------------------------------
 
 
-async def read_file(path: str) -> Any:
-    """Read a markdown page from your memory wiki. Use this to recall what
-    you've previously learned about a topic, person, or the user before
-    answering.
+async def read_memory(path: str) -> Any:
+    """Read a stored memory page from your agentic memory. Use this to recall
+    what you've previously learned and saved about a topic, person, or the
+    user before answering. Memory persists across sessions — always check
+    here for relevant context.
 
     Args:
-        path: Page path, e.g. "user/profile.md".
+        path: Memory page path, e.g. "user/profile.md".
     """
     await _ensure_schema()
     path = _normalize(path)
@@ -107,17 +108,17 @@ async def read_file(path: str) -> Any:
     return {"path": path, "content": record["content"] or ""}
 
 
-async def write_file(path: str, content: str) -> Any:
-    """Create or overwrite a page in your memory wiki. Use this to store
-    durable learnings: facts about the user (preferences, goals, background,
-    working style), insights from conversations, decisions made, patterns
-    you've noticed, or concepts worth remembering across sessions. Parses
-    `[[wikilinks]]` from content and links to those pages, auto-creating
-    empty stubs as needed.
+async def write_memory(path: str, content: str) -> Any:
+    """Save or overwrite a memory in your agentic memory. Use this whenever
+    you want to remember something for later: facts about the user
+    (preferences, goals, background, working style), insights from
+    conversations, decisions made, patterns you've noticed, or any concept
+    worth recalling in future sessions. Parses `[[wikilinks]]` from content
+    and links to those memories, auto-creating empty stubs as needed.
 
     Args:
-        path: Page path, e.g. "user/profile.md".
-        content: Full markdown content of the page.
+        path: Memory page path, e.g. "user/profile.md".
+        content: Full markdown content of the memory.
     """
     await _ensure_schema()
     path = _normalize(path)
@@ -155,16 +156,16 @@ async def _write_tx(tx, path: str, content: str, links: list[str]) -> None:
         )
 
 
-async def append_file(path: str, content: str) -> Any:
-    """Append to an existing page without rewriting it. Use for running logs
-    (`log.md`), timelines on an entity page, or accumulating observations
+async def append_memory(path: str, content: str) -> Any:
+    """Append to an existing memory without rewriting it. Use for running
+    logs (`log.md`), timelines on an entity, or accumulating observations
     about the user over time. Adds new links for any wikilinks in the
     appended text.
 
     Args:
-        path: Page path, e.g. "log.md".
+        path: Memory page path, e.g. "log.md".
         content: Markdown to append. A newline is inserted before it if the
-            existing page does not already end with one.
+            existing memory does not already end with one.
     """
     await _ensure_schema()
     path = _normalize(path)
@@ -199,9 +200,9 @@ async def append_file(path: str, content: str) -> Any:
     return {"ok": True, "path": path, "added_links": links}
 
 
-async def list_files(prefix: str = "") -> Any:
-    """List all page paths starting with `prefix`, sorted. Use to browse
-    what you already know in a category (e.g. `entities/` to see everyone
+async def list_memories(prefix: str = "") -> Any:
+    """List all memory paths starting with `prefix`, sorted. Use to browse
+    what you already remember in a category (e.g. `entities/` to see everyone
     you've tracked, `user/` for what you know about the user).
 
     Args:
@@ -221,10 +222,11 @@ async def list_files(prefix: str = "") -> Any:
     return {"prefix": prefix, "paths": paths}
 
 
-async def search(query: str, limit: int = 10) -> Any:
-    """Full-text search across your memory wiki. Use this at the start of a
-    task to check whether you already have relevant knowledge stored — about
-    the user, the domain, or prior decisions — before asking or assuming.
+async def search_memory(query: str, limit: int = 10) -> Any:
+    """Full-text search across your agentic memory. Use this at the start of
+    a task to check whether you already have relevant knowledge stored —
+    about the user, the domain, or prior decisions — before asking or
+    assuming.
 
     Args:
         query: Lucene-style full-text query.
@@ -251,12 +253,12 @@ async def search(query: str, limit: int = 10) -> Any:
     return {"query": query, "results": hits}
 
 
-async def find_backlinks(path: str) -> Any:
-    """Return all pages that link to this one. Use to find where an entity
-    or concept has come up across your memory.
+async def find_memory_backlinks(path: str) -> Any:
+    """Return all memories that link to this one. Use to find where an
+    entity or concept has come up across your agentic memory.
 
     Args:
-        path: Page path to find backlinks for.
+        path: Memory page path to find backlinks for.
     """
     await _ensure_schema()
     path = _normalize(path)
@@ -273,14 +275,14 @@ async def find_backlinks(path: str) -> Any:
     return {"path": path, "backlinks": backlinks}
 
 
-async def rename_file(old_path: str, new_path: str) -> Any:
-    """Atomically rename a page; also rewrites `[[old_path]]` references to
-    `[[new_path]]` in every page that links to it. Use when you've learned a
-    better name for something.
+async def rename_memory(old_path: str, new_path: str) -> Any:
+    """Atomically rename a memory; also rewrites `[[old_path]]` references
+    to `[[new_path]]` in every memory that links to it. Use when you've
+    learned a better name for something.
 
     Args:
-        old_path: Current page path.
-        new_path: New page path.
+        old_path: Current memory page path.
+        new_path: New memory page path.
     """
     await _ensure_schema()
     old_path = _normalize(old_path)
@@ -337,12 +339,12 @@ async def _rename_tx(tx, old_path: str, new_path: str) -> None:
     )
 
 
-async def delete_file(path: str) -> Any:
-    """Soft delete a page. Use when a page is obsolete or wrong; prefer
+async def delete_memory(path: str) -> Any:
+    """Soft delete a memory. Use when a memory is obsolete or wrong; prefer
     rewriting over deleting when possible so history is preserved.
 
     Args:
-        path: Page path to delete.
+        path: Memory page path to delete.
     """
     await _ensure_schema()
     path = _normalize(path)
@@ -362,11 +364,11 @@ async def delete_file(path: str) -> Any:
 
 def register(mcp) -> None:
     """Register memory tools on the FastMCP server."""
-    mcp.tool()(read_file)
-    mcp.tool()(write_file)
-    mcp.tool()(append_file)
-    mcp.tool()(list_files)
-    mcp.tool()(search)
-    mcp.tool()(find_backlinks)
-    mcp.tool()(rename_file)
-    mcp.tool()(delete_file)
+    mcp.tool()(read_memory)
+    mcp.tool()(write_memory)
+    mcp.tool()(append_memory)
+    mcp.tool()(list_memories)
+    mcp.tool()(search_memory)
+    mcp.tool()(find_memory_backlinks)
+    mcp.tool()(rename_memory)
+    mcp.tool()(delete_memory)
