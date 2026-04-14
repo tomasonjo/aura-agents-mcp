@@ -204,7 +204,22 @@ async def list_agents(
         project_id: Optional project UUID (skips auto-resolution if provided with organization_id).
     """
     organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
-    return await _request("GET", f"/organizations/{organization_id}/projects/{project_id}/agents")
+    resp = await _request(
+        "GET", f"/organizations/{organization_id}/projects/{project_id}/agents"
+    )
+    # Pass through errors as-is; otherwise always return a list, even when
+    # the API returns nothing / null / a {data: ...} envelope. An empty
+    # list is much less ambiguous than no output.
+    if isinstance(resp, dict) and resp.get("error"):
+        return resp
+    if resp is None:
+        return []
+    if isinstance(resp, dict):
+        if "data" in resp:
+            data = resp.get("data")
+            return data if isinstance(data, list) else ([] if data is None else [data])
+        return [resp] if resp else []
+    return resp if isinstance(resp, list) else [resp]
 
 
 @mcp.tool()
@@ -348,21 +363,26 @@ async def update_agent(
     if isinstance(current, dict) and current.get("error"):
         return current
 
+    # Start from the full current agent and overlay only the fields the
+    # caller explicitly set. This preserves any field we don't know about
+    # (e.g. avatar_color, avatar_icon) instead of silently dropping it.
+    # Read-only / server-managed fields are stripped before PUT.
+    READ_ONLY = {"id", "created_at", "updated_at", "status"}
     body: dict[str, Any] = {
-        "name": name if name is not None else current.get("name", ""),
-        "description": description
-        if description is not None
-        else current.get("description", ""),
-        "dbid": new_dbid if new_dbid is not None else current.get("dbid", ""),
-        "is_private": is_private
-        if is_private is not None
-        else current.get("is_private", False),
-        "tools": tools if tools is not None else current.get("tools", []),
+        k: v for k, v in current.items() if k not in READ_ONLY
     }
+    if name is not None:
+        body["name"] = name
+    if description is not None:
+        body["description"] = description
+    if new_dbid is not None:
+        body["dbid"] = new_dbid
+    if is_private is not None:
+        body["is_private"] = is_private
+    if tools is not None:
+        body["tools"] = tools
     if system_prompt is not None:
         body["system_prompt"] = system_prompt
-    elif current.get("system_prompt"):
-        body["system_prompt"] = current["system_prompt"]
     if enabled is not None:
         body["enabled"] = enabled
 
@@ -488,7 +508,39 @@ async def get_schema(
     # 3. Fire-and-forget deletion of the temporary agent
     asyncio.create_task(_delete_agent_background(base, agent_id))
 
+    # 4. Dig the raw schema dict out of the agent's content blocks.
+    # The invoke response is a list of content blocks; the cypherTemplate
+    # tool result lives in a block with `output.records[0].value`. Fall
+    # back to returning the full response if the shape is unexpected.
+    extracted = _extract_schema_records(schema)
+    if extracted is not None:
+        return extracted
     return schema
+
+
+def _extract_schema_records(resp: Any) -> Any:
+    """Pull the schema dict out of an invoke response, or return None."""
+    blocks: list[Any] = []
+    if isinstance(resp, list):
+        blocks = resp
+    elif isinstance(resp, dict):
+        for key in ("content", "output", "messages"):
+            v = resp.get(key)
+            if isinstance(v, list):
+                blocks = v
+                break
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        output = block.get("output")
+        if isinstance(output, dict):
+            records = output.get("records")
+            if isinstance(records, list) and records:
+                first = records[0]
+                if isinstance(first, dict) and "value" in first:
+                    return first["value"]
+                return first
+    return None
 
 
 async def _delete_agent_background(base: str, agent_id: str) -> None:

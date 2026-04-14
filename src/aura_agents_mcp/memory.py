@@ -251,15 +251,15 @@ async def search_memory(query: str, limit: int = 10) -> Any:
     await _ensure_schema()
     driver = await _get_driver()
     async with driver.session() as s:
+        # NB: pass parameters as a dict — using `query=...` as a kwarg
+        # collides with AsyncSession.run's first positional `query` arg.
         result = await s.run(
-            "CALL db.index.fulltext.queryNodes('page_fulltext', $query) "
+            "CALL db.index.fulltext.queryNodes('page_fulltext', $q) "
             "YIELD node, score "
             "WHERE node.wiki = $wiki AND coalesce(node.deleted, false) = false "
             "RETURN node.path AS path, node.content AS content, score "
             "LIMIT $limit",
-            query=query,
-            wiki=WIKI,
-            limit=limit,
+            {"q": query, "wiki": WIKI, "limit": limit},
         )
         hits = []
         async for r in result:
@@ -291,14 +291,22 @@ async def find_memory_backlinks(path: str) -> Any:
     return {"path": path, "backlinks": backlinks}
 
 
-async def rename_memory(old_path: str, new_path: str) -> Any:
+async def rename_memory(
+    old_path: str, new_path: str, overwrite: bool = False
+) -> Any:
     """Atomically rename a memory; also rewrites `[[old_path]]` references
     to `[[new_path]]` in every memory that links to it. Use when you've
     learned a better name for something.
 
+    By default, refuses if `new_path` already exists with non-empty content
+    (a "real" page, not just an auto-created stub). Pass `overwrite=True`
+    to clobber. Empty stubs created by wikilinks are always merged into.
+
     Args:
         old_path: Current memory page path.
         new_path: New memory page path.
+        overwrite: If True, replace `new_path` even when it already has
+            content. Defaults to False to prevent accidental data loss.
     """
     await _ensure_schema()
     old_path = _normalize(old_path)
@@ -308,6 +316,25 @@ async def rename_memory(old_path: str, new_path: str) -> Any:
 
     driver = await _get_driver()
     async with driver.session() as s:
+        if not overwrite:
+            existing = await s.run(
+                "MATCH (p:Page {wiki: $wiki, path: $path}) "
+                "WHERE coalesce(p.deleted, false) = false "
+                "  AND coalesce(p.content, '') <> '' "
+                "RETURN p.path AS path",
+                {"wiki": WIKI, "path": new_path},
+            )
+            collision = await existing.single()
+            if collision is not None:
+                return {
+                    "error": True,
+                    "message": (
+                        f"Refusing to rename: '{new_path}' already exists with "
+                        "content. Pass overwrite=True to replace it."
+                    ),
+                    "old_path": old_path,
+                    "new_path": new_path,
+                }
         await s.execute_write(_rename_tx, old_path, new_path)
     return {"ok": True, "old_path": old_path, "new_path": new_path}
 
