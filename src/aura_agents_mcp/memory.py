@@ -118,19 +118,49 @@ async def write_memory(path: str, content: str) -> Any:
 
     Recommended page layout — organise memories by topic, not by
     conversation, so they can be recalled independently of when they
-    were learned:
+    were learned. Group facts and learnings about each *database* and
+    each *agent* under their own page so they can be retrieved
+    individually rather than scanning a single mixed log:
 
         user/profile.md          # who they are, role, responsibilities
         user/preferences.md      # tooling, style, do / don't
+
+        databases/<dbid>.md      # one page per Aura database. Capture:
+                                 #   - purpose / dataset description
+                                 #   - schema quirks, label & rel naming
+                                 #   - known-good Cypher patterns
+                                 #   - gotchas, slow queries, indexes
+                                 #   - links to related agents/concepts
+        databases/<dbid>/<topic>.md  # optional sub-pages for deep dives
+                                 #   (e.g. databases/abc123/schema.md)
+
+        agents/<agent_id>.md     # one page per agent. Capture:
+                                 #   - what it's for, who uses it
+                                 #   - tool list and why each was chosen
+                                 #   - prompt-engineering lessons
+                                 #   - failure modes, fixes, retries
+                                 #   - link to its `databases/<dbid>.md`
+        agents/<agent_id>/<topic>.md # optional sub-pages
+
         entities/<name>.md       # people, orgs, services, repos
         concepts/<name>.md       # domain ideas worth knowing
-        learnings/<topic>.md     # what went wrong and the fix
+        learnings/<topic>.md     # cross-cutting lessons not tied to one
+                                 # database or agent
         log.md                   # scratch / chronological notes
 
-    Cross-link liberally with `[[wikilinks]]` (e.g. a `learnings/` page
-    referencing `[[concepts/text2cypher]]`) — every link becomes a graph
-    edge you can traverse later via `find_memory_backlinks`. Prefer
-    refining an existing page over creating near-duplicates.
+    The `databases/` and `agents/` namespaces are recommendations, not
+    rules — feel free to add other top-level folders when something
+    doesn't fit. The point is that anything you learn about a *specific*
+    database or agent should live on its own page (keyed by id), so a
+    future session can call `read_memory("databases/<dbid>.md")` or
+    `read_memory("agents/<agent_id>.md")` and get exactly that context
+    instead of having to grep a mixed log.
+
+    Cross-link liberally with `[[wikilinks]]` — every agent page should
+    link to its `[[databases/<dbid>]]`, learnings should link to the
+    `[[concepts/...]]` they relate to, and so on. Every link becomes a
+    graph edge you can traverse later via `find_memory_backlinks`.
+    Prefer refining an existing page over creating near-duplicates.
 
     Args:
         path: Memory page path, e.g. "user/profile.md".
