@@ -4,6 +4,8 @@ MCP server for the [Neo4j Aura Agents API](https://neo4j.com/docs/aura/platform/
 
 Exposes tools for creating, listing, updating, deleting, and invoking Aura Agents through any MCP-compatible client (Claude Desktop, Claude Code, etc.).
 
+It also ships an optional **persistent memory layer** backed by Neo4j — a markdown wiki the model writes for itself, inspired by [Andrej Karpathy's idea of an LLM-authored knowledge base](https://x.com/karpathy/status/2039805659525644595). Pages are linked with `[[wikilinks]]` that materialise as graph edges, so the model's notes about you, your projects, and lessons learned grow into a real knowledge graph it can search, traverse, and refactor over time. See [Memory tools](#memory-tools) below.
+
 ## Prerequisites
 
 - Python 3.10+
