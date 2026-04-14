@@ -112,7 +112,7 @@ Registered only when `NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEM
 
 #### A wiki the model writes for itself
 
-The memory layer is inspired by [Andrej Karpathy's idea of an LLM-authored knowledge base](https://x.com/karpathy/status/1921368644069765486) — instead of relying solely on fine-tuning or stuffing everything into the prompt, the model curates its *own* wiki as it works. Every interaction is an opportunity to take notes: who the user is, what conventions a project follows, which approaches failed last time, what an unfamiliar acronym means. Those notes are written back as plain markdown pages and recalled on demand in future sessions.
+The memory layer is inspired by [Andrej Karpathy's idea of an LLM-authored knowledge base](https://x.com/karpathy/status/2039805659525644595) — instead of relying solely on fine-tuning or stuffing everything into the prompt, the model curates its *own* wiki as it works. Every interaction is an opportunity to take notes: who the user is, what conventions a project follows, which approaches failed last time, what an unfamiliar acronym means. Those notes are written back as plain markdown pages and recalled on demand in future sessions.
 
 This turns memory into a **graph of interlinked pages** rather than a flat log:
 
