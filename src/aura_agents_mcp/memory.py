@@ -148,7 +148,9 @@ async def write_memory(path: str, content: str) -> Any:
 async def _write_tx(tx, path: str, content: str, links: list[str]) -> None:
     await tx.run(
         "MERGE (p:Page {wiki: $wiki, path: $path}) "
-        "SET p.content = $content, p.deleted = false",
+        "ON CREATE SET p.created_at = datetime() "
+        "SET p.content = $content, p.deleted = false, "
+        "    p.size = size($content), p.updated_at = datetime()",
         wiki=WIKI,
         path=path,
         content=content,
@@ -164,7 +166,9 @@ async def _write_tx(tx, path: str, content: str, links: list[str]) -> None:
             "MATCH (p:Page {wiki: $wiki, path: $path}) "
             "UNWIND $links AS target "
             "MERGE (t:Page {wiki: $wiki, path: target}) "
-            "ON CREATE SET t.content = '', t.deleted = false "
+            "ON CREATE SET t.content = '', t.deleted = false, "
+            "              t.size = 0, t.created_at = datetime(), "
+            "              t.updated_at = datetime() "
             "MERGE (p)-[:LINKS_TO]->(t)",
             wiki=WIKI,
             path=path,
@@ -190,12 +194,18 @@ async def append_memory(path: str, content: str) -> Any:
     async with driver.session() as s:
         result = await s.run(
             "MERGE (p:Page {wiki: $wiki, path: $path}) "
-            "ON CREATE SET p.content = '', p.deleted = false "
+            "ON CREATE SET p.content = '', p.deleted = false, "
+            "              p.created_at = datetime() "
             "SET p.deleted = false, "
             "    p.content = CASE "
             "      WHEN coalesce(p.content, '') = '' THEN $content "
             "      WHEN right(p.content, 1) = '\n' THEN p.content + $content "
-            "      ELSE p.content + '\n' + $content END "
+            "      ELSE p.content + '\n' + $content END, "
+            "    p.size = size(CASE "
+            "      WHEN coalesce(p.content, '') = '' THEN $content "
+            "      WHEN right(p.content, 1) = '\n' THEN p.content + $content "
+            "      ELSE p.content + '\n' + $content END), "
+            "    p.updated_at = datetime() "
             "RETURN p.path AS path",
             wiki=WIKI,
             path=path,
@@ -207,7 +217,9 @@ async def append_memory(path: str, content: str) -> Any:
                 "MATCH (p:Page {wiki: $wiki, path: $path}) "
                 "UNWIND $links AS target "
                 "MERGE (t:Page {wiki: $wiki, path: target}) "
-                "ON CREATE SET t.content = '', t.deleted = false "
+                "ON CREATE SET t.content = '', t.deleted = false, "
+                "              t.size = 0, t.created_at = datetime(), "
+                "              t.updated_at = datetime() "
                 "MERGE (p)-[:LINKS_TO]->(t)",
                 wiki=WIKI,
                 path=path,
@@ -216,26 +228,113 @@ async def append_memory(path: str, content: str) -> Any:
     return {"ok": True, "path": path, "added_links": links}
 
 
-async def list_memories(prefix: str = "") -> Any:
-    """List all memory paths starting with `prefix`, sorted. Use to browse
-    what you already remember in a category (e.g. `entities/` to see everyone
-    you've tracked, `user/` for what you know about the user).
+_LIST_SORT_FIELDS = {"path", "updated_at", "created_at", "size"}
+
+
+async def list_memories(
+    prefix: str = "",
+    limit: int = 100,
+    offset: int = 0,
+    sort_by: str = "path",
+    order: str = "asc",
+) -> Any:
+    """List memory pages, with pagination, sorting, and metadata. Use to
+    browse what you already remember in a category (e.g. `entities/` to see
+    everyone you've tracked, `user/` for what you know about the user) or
+    to find recently-updated pages with `sort_by="updated_at"`,
+    `order="desc"`.
+
+    Each entry includes `path`, `size` (bytes of content), `created_at`,
+    and `updated_at` (ISO-8601). Pages written before this metadata existed
+    will report null for the timestamps and 0 for size — rewriting the
+    page once will populate them.
 
     Args:
         prefix: Optional path prefix to filter by. Empty string lists all.
+        limit: Maximum number of results to return. Defaults to 100.
+        offset: Number of results to skip (for paging through large lists).
+        sort_by: One of "path", "updated_at", "created_at", "size".
+        order: "asc" or "desc".
     """
+    if sort_by not in _LIST_SORT_FIELDS:
+        return {
+            "error": True,
+            "message": f"sort_by must be one of {sorted(_LIST_SORT_FIELDS)}",
+        }
+    order_norm = order.lower()
+    if order_norm not in ("asc", "desc"):
+        return {"error": True, "message": "order must be 'asc' or 'desc'"}
+    if limit < 1:
+        return {"error": True, "message": "limit must be >= 1"}
+    if offset < 0:
+        return {"error": True, "message": "offset must be >= 0"}
+
+    # Sort field is whitelisted above, so direct interpolation is safe and
+    # avoids the Cypher "cannot parameterise ORDER BY" limitation.
+    direction = "DESC" if order_norm == "desc" else "ASC"
+    cypher = (
+        "MATCH (p:Page {wiki: $wiki}) "
+        "WHERE coalesce(p.deleted, false) = false "
+        "  AND p.path STARTS WITH $prefix "
+        "WITH count(p) AS total, collect(p) AS pages "
+        "UNWIND pages AS p "
+        "WITH total, p "
+        f"ORDER BY p.{sort_by} {direction}, p.path ASC "
+        "SKIP $offset LIMIT $limit "
+        "RETURN total, p.path AS path, "
+        "       coalesce(p.size, 0) AS size, "
+        "       p.created_at AS created_at, "
+        "       p.updated_at AS updated_at"
+    )
     await _ensure_schema()
     driver = await _get_driver()
     async with driver.session() as s:
         result = await s.run(
-            "MATCH (p:Page {wiki: $wiki}) "
-            "WHERE coalesce(p.deleted, false) = false AND p.path STARTS WITH $prefix "
-            "RETURN p.path AS path ORDER BY p.path",
-            wiki=WIKI,
-            prefix=prefix,
+            cypher,
+            {"wiki": WIKI, "prefix": prefix, "offset": offset, "limit": limit},
         )
-        paths = [r["path"] async for r in result]
-    return {"prefix": prefix, "paths": paths}
+        items: list[dict[str, Any]] = []
+        total = 0
+        async for r in result:
+            total = r["total"]
+            items.append(
+                {
+                    "path": r["path"],
+                    "size": r["size"],
+                    "created_at": _iso(r["created_at"]),
+                    "updated_at": _iso(r["updated_at"]),
+                }
+            )
+    if not items:
+        # No matches at all — fetch total separately so callers can tell
+        # "empty page" from "filter matched nothing".
+        async with driver.session() as s:
+            tot_result = await s.run(
+                "MATCH (p:Page {wiki: $wiki}) "
+                "WHERE coalesce(p.deleted, false) = false "
+                "  AND p.path STARTS WITH $prefix "
+                "RETURN count(p) AS total",
+                {"wiki": WIKI, "prefix": prefix},
+            )
+            rec = await tot_result.single()
+            total = rec["total"] if rec else 0
+    return {
+        "prefix": prefix,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "sort_by": sort_by,
+        "order": order_norm,
+        "items": items,
+    }
+
+
+def _iso(value: Any) -> Any:
+    """Render a Neo4j DateTime to an ISO-8601 string; pass None through."""
+    if value is None:
+        return None
+    iso = getattr(value, "isoformat", None)
+    return iso() if callable(iso) else str(value)
 
 
 async def search_memory(query: str, limit: int = 10) -> Any:
@@ -345,7 +444,10 @@ async def _rename_tx(tx, old_path: str, new_path: str) -> None:
     await tx.run(
         "MATCH (old:Page {wiki: $wiki, path: $old_path}) "
         "MERGE (new:Page {wiki: $wiki, path: $new_path}) "
-        "SET new.content = old.content, new.deleted = false "
+        "ON CREATE SET new.created_at = coalesce(old.created_at, datetime()) "
+        "SET new.content = old.content, new.deleted = false, "
+        "    new.size = coalesce(old.size, size(coalesce(old.content, ''))), "
+        "    new.updated_at = datetime() "
         "WITH old, new "
         "OPTIONAL MATCH (old)-[r:LINKS_TO]->(t) "
         "FOREACH (_ IN CASE WHEN t IS NULL THEN [] ELSE [1] END | "
@@ -395,7 +497,8 @@ async def delete_memory(path: str) -> Any:
     async with driver.session() as s:
         result = await s.run(
             "MATCH (p:Page {wiki: $wiki, path: $path}) "
-            "SET p.deleted = true RETURN p.path AS path",
+            "SET p.deleted = true, p.updated_at = datetime() "
+            "RETURN p.path AS path",
             wiki=WIKI,
             path=path,
         )
