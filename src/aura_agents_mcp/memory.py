@@ -247,6 +247,11 @@ async def list_memories(
     Each entry includes `path`, `size` (bytes of content), `created_at`,
     and `updated_at` (ISO-8601).
 
+    The response also includes a `directories` list — distinct sub-folders
+    that exist directly under `prefix` (e.g. listing `""` returns
+    `["concepts/", "entities/", "user/"]`). Use this to discover the
+    hierarchy and drill down without having to know the layout up front.
+
     Args:
         prefix: Optional path prefix to filter by. Empty string lists all.
         limit: Maximum number of results to return. Defaults to 10.
@@ -302,10 +307,9 @@ async def list_memories(
                     "updated_at": _iso(r["updated_at"]),
                 }
             )
-    if not items:
-        # No matches at all — fetch total separately so callers can tell
-        # "empty page" from "filter matched nothing".
-        async with driver.session() as s:
+        if not items:
+            # No matches in this page — still need the total so callers
+            # can tell "empty page" from "filter matched nothing".
             tot_result = await s.run(
                 "MATCH (p:Page {wiki: $wiki}) "
                 "WHERE coalesce(p.deleted, false) = false "
@@ -315,6 +319,22 @@ async def list_memories(
             )
             rec = await tot_result.single()
             total = rec["total"] if rec else 0
+
+        # Discover sub-directories one level under `prefix` so the LLM
+        # can navigate the hierarchy without knowing it up front.
+        dir_result = await s.run(
+            "MATCH (p:Page {wiki: $wiki}) "
+            "WHERE coalesce(p.deleted, false) = false "
+            "  AND p.path STARTS WITH $prefix "
+            "  AND p.path CONTAINS '/' "
+            "WITH substring(p.path, size($prefix)) AS rest "
+            "WHERE rest CONTAINS '/' "
+            "WITH DISTINCT split(rest, '/')[0] + '/' AS dir "
+            "RETURN dir ORDER BY dir",
+            {"wiki": WIKI, "prefix": prefix},
+        )
+        directories = [r["dir"] async for r in dir_result]
+
     return {
         "prefix": prefix,
         "total": total,
@@ -322,6 +342,7 @@ async def list_memories(
         "limit": limit,
         "sort_by": sort_by,
         "order": order_norm,
+        "directories": directories,
         "items": items,
     }
 
