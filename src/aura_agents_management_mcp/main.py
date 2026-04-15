@@ -450,10 +450,11 @@ async def get_schema(
     organization_id: str = "",
     project_id: str = "",
 ) -> Any:
-    """Get the schema of a Neo4j database.
+    """Get the schema of a Neo4j database, including fulltext and vector indexes.
 
-    Creates a temporary cypher_template agent, invokes it to fetch the schema,
-    then deletes the agent in the background.
+    Creates a temporary cypher_template agent, invokes it to fetch the schema
+    together with the fulltext/vector indexes in a single query, then deletes
+    the agent in the background.
 
     Args:
         dbid: Target Aura database instance ID. Use list_databases to find available database IDs.
@@ -463,7 +464,26 @@ async def get_schema(
     organization_id, project_id = await _resolve_org_project(dbid, organization_id, project_id)
     base = f"/organizations/{organization_id}/projects/{project_id}/agents"
 
-    # 1. Create a temporary cypherTemplate agent
+    # 1. Create a temporary cypherTemplate agent with tools for schema and indexes.
+    # SHOW INDEXES can't be composed with regular Cypher, so it lives in its own
+    # tool. The system prompt instructs the agent to always call both tools for
+    # any schema request so a single invoke returns both results.
+    system_prompt = (
+        "You are a Neo4j schema retrieval assistant. Whenever the user asks for "
+        "the database schema, you MUST call BOTH of the available tools, in this "
+        "order:\n"
+        "  1. `get_schema` — returns the node/relationship schema from "
+        "apoc.meta.schema().\n"
+        "  2. `get_indexes` — returns the fulltext and vector indexes.\n"
+        "Always call both tools, even if the user only mentions 'schema'. Never "
+        "skip `get_indexes`. After both tool calls complete, return the raw "
+        "results from both tools so the caller can see the schema and the "
+        "fulltext/vector indexes together.\n\n"
+        "Example question: 'Fetch the database schema.'\n"
+        "Expected behaviour: call `get_schema`, then call `get_indexes`, then "
+        "return both results."
+    )
+
     agent = await _request(
         "POST",
         base,
@@ -472,17 +492,32 @@ async def get_schema(
             "description": "Temporary agent for schema retrieval",
             "dbid": dbid,
             "is_private": False,
+            "system_prompt": system_prompt,
             "tools": [
                 {
                     "type": "cypherTemplate",
                     "name": "get_schema",
-                    "description": "Fetch the database schema.",
+                    "description": "Fetch the node/relationship schema via apoc.meta.schema().",
                     "enabled": True,
                     "config": {
                         "template": "CALL apoc.meta.schema() YIELD value RETURN value",
                         "parameters": [],
                     },
-                }
+                },
+                {
+                    "type": "cypherTemplate",
+                    "name": "get_indexes",
+                    "description": "Fetch fulltext and vector indexes.",
+                    "enabled": True,
+                    "config": {
+                        "template": (
+                            "SHOW INDEXES YIELD name, type, labelsOrTypes, properties, options "
+                            "WHERE type IN ['FULLTEXT', 'VECTOR'] "
+                            "RETURN name, type, labelsOrTypes, properties, options"
+                        ),
+                        "parameters": [],
+                    },
+                },
             ],
         },
     )
@@ -493,9 +528,9 @@ async def get_schema(
     if not agent_id:
         return {"error": True, "message": "Failed to get agent ID from creation response."}
 
-    # 2. Invoke the agent to fetch the schema
+    # 2. Single invoke; the system prompt ensures the agent calls both tools.
     try:
-        schema = await _request(
+        resp = await _request(
             "POST",
             f"{base}/{agent_id}/invoke",
             json={"input": "Fetch the database schema."},
@@ -508,14 +543,20 @@ async def get_schema(
     # 3. Fire-and-forget deletion of the temporary agent
     asyncio.create_task(_delete_agent_background(base, agent_id))
 
-    # 4. Dig the raw schema dict out of the agent's content blocks.
-    # The invoke response is a list of content blocks; the cypherTemplate
-    # tool result lives in a block with `output.records[0].value`. Fall
-    # back to returning the full response if the shape is unexpected.
-    extracted = _extract_schema_records(schema)
-    if extracted is not None:
-        return extracted
-    return schema
+    # 4. Extract results for both tool calls from the single invoke response.
+    by_tool = _extract_tool_records(resp)
+    schema_records = by_tool.get("get_schema") or []
+    indexes_records = by_tool.get("get_indexes") or []
+
+    schema: Any = None
+    if schema_records:
+        first = schema_records[0]
+        schema = first["value"] if isinstance(first, dict) and "value" in first else first
+
+    return {
+        "schema": schema if schema is not None else resp,
+        "indexes": indexes_records,
+    }
 
 
 def _extract_schema_records(resp: Any) -> Any:
@@ -541,6 +582,44 @@ def _extract_schema_records(resp: Any) -> Any:
                     return first["value"]
                 return first
     return None
+
+
+def _extract_tool_records(resp: Any) -> dict[str, Any]:
+    """Return a mapping of tool name -> records from an invoke response.
+
+    Walks every content block in the response and, for each block that looks
+    like a tool result (has `output.records`), associates the records with the
+    tool name found on the block (trying several common field names).
+    """
+    blocks: list[Any] = []
+    if isinstance(resp, list):
+        blocks = resp
+    elif isinstance(resp, dict):
+        for key in ("content", "output", "messages"):
+            v = resp.get(key)
+            if isinstance(v, list):
+                blocks = v
+                break
+    out: dict[str, Any] = {}
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        output = block.get("output")
+        if not isinstance(output, dict):
+            continue
+        records = output.get("records")
+        if not isinstance(records, list):
+            continue
+        name = (
+            block.get("name")
+            or block.get("tool_name")
+            or block.get("tool")
+            or output.get("name")
+            or output.get("tool_name")
+        )
+        if name:
+            out[name] = records
+    return out
 
 
 async def _delete_agent_background(base: str, agent_id: str) -> None:
